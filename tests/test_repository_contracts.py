@@ -42,6 +42,22 @@ class RepositoryContracts(unittest.TestCase):
             with self.subTest(url=unsupported), self.assertRaises(ValueError):
                 github_identity(unsupported)
 
+    def test_ssh_url_shares_identity_with_https_and_scp(self):
+        identity = github_identity("ssh://git@github.com/VFI64/Apk2.git")
+        self.assertEqual(identity, "github.com/vfi64/apk2")
+        for equivalent in [
+            "https://github.com/vfi64/apk2.git",
+            "git@github.com:vfi64/apk2.git",
+        ]:
+            with self.subTest(url=equivalent):
+                self.assertEqual(identity, github_identity(equivalent))
+        for different in [
+            "ssh://git@github.com/vfi64/other.git",
+            "ssh://git@github.com/other-owner/apk2.git",
+        ]:
+            with self.subTest(url=different):
+                self.assertNotEqual(identity, github_identity(different))
+
     def test_subdirectory_resolves_to_own_root(self):
         child = self.parent / "src"
         child.mkdir()
