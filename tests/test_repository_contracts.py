@@ -58,6 +58,17 @@ class RepositoryContracts(unittest.TestCase):
             with self.subTest(url=different):
                 self.assertNotEqual(identity, github_identity(different))
 
+    def test_ssh_url_with_explicit_port_22_shares_identity(self):
+        self.assertEqual(
+            github_identity("ssh://git@github.com:22/vfi64/apk2.git"),
+            github_identity("ssh://git@github.com/vfi64/apk2.git"),
+        )
+
+    def test_ssh_url_rejects_other_explicit_ports(self):
+        for port in (21, 23, 443, 2222):
+            with self.subTest(port=port), self.assertRaises(ValueError):
+                github_identity(f"ssh://git@github.com:{port}/vfi64/apk2.git")
+
     def test_subdirectory_resolves_to_own_root(self):
         child = self.parent / "src"
         child.mkdir()
@@ -85,9 +96,10 @@ class RepositoryContracts(unittest.TestCase):
 
 
 def github_identity(url):
-    """Reference scope: HTTPS and scp-style GitHub remotes, without credentials."""
+    """Normalize HTTPS, scp-style, and SSH URLs for GitHub remotes."""
     match = re.fullmatch(
-        r"(?:https://github\.com/|git@github\.com:)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+        r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com(?::22)?/)"
+        r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
         url, re.IGNORECASE,
     )
     if match is None:

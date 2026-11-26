@@ -3,18 +3,16 @@
 Date: 2026-11-26
 Base: main at fd5d9da13ad4bbb273eba9475f70a2cf103a9e1c
 Work branch: codex/ssh-repository-identity
-Status: owner decision recorded; subsequent implementation authorized; stopped
-before implementation for chat switch.
+Status: reference examples implemented and verified locally. GitHub transfer
+and merge remain with the owner.
 
 ## Scope and authorization
 
-Source: the owner's original request and explicit option-2 follow-up decision
-in the Codex chat on 26 November 2026.
-The owner authorizes subsequent implementation within the decision below.
-Local changes, tests and commits remain allowed. For this turn, only this note
-may be changed and committed; then stop for chat switch before implementation.
-The owner still handles transfer to GitHub and merge. No new dependencies.
-This note records the owner's messages; it does not authenticate or extend approval.
+After the chat switch, the owner confirmed that the chat-switch check passed and
+authorized the two port tests, the bounded reference implementation, the README
+and task note updates, the full local suite, and a local commit. The owner handles
+GitHub transfer and merge. The untracked `.DS_Store` is outside the task.
+The change uses the existing Python standard library.
 
 ## Work completed
 
@@ -31,7 +29,7 @@ Expected error at the first SSH call: `ValueError: unsupported GitHub remote`.
 The later assertions in the new test are not reached yet. No successful SSH
 behavior or Linux execution is claimed.
 
-## Recorded owner decision and chat-switch boundary
+## Recorded owner decision
 
 The owner chose option 2 and explicitly approved subsequent implementation:
 
@@ -43,8 +41,15 @@ The owner chose option 2 and explicitly approved subsequent implementation:
   different repositories remain distinguishable. Existing tests are retained.
 
 Reproduction commit: 693c997a726133295db013d8435482c96406ec90.
-The reference function and tests have not been changed since that reproduction.
-The results above are from that run; tests are not rerun for this note-only update.
-Implementation and port-specific tests remain pending for the successor chat.
-Next: add tests for the approved port policy, implement the bounded extension,
-and run the existing unittest suite. Stop this turn after committing only this note.
+
+## Implementation and verification
+
+Added separate tests for identity equivalence with explicit port 22 and for
+rejection of ports 21, 23, 443, and 2222. With the new tests and the original
+reference function, 9 of 11 tests passed. The portless and explicit-port-22
+tests raised the expected `ValueError`. The rejection test already passed.
+
+Extended the existing matcher to recognize the SSH URL prefix with an optional
+`:22` and use the same repository normalization as HTTPS and scp-style URLs.
+`python3 -B -m unittest discover -s tests -v` then passed all 11 tests on macOS.
+Linux CI and a future Rust resolver remain outside this verification.
