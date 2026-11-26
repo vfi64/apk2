@@ -1,0 +1,24 @@
+name: Acceptance contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main, codex/acceptance-contracts]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Run local Git contract examples
+        run: python -B -m unittest discover -s tests -v

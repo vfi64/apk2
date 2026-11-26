@@ -1,6 +1,6 @@
 # apk2 acceptance examples
 
-This repository starts with four executable contract examples for the planned
+This repository contains eight executable contract examples for the planned
 Rust implementation. Python's standard library runs the examples against local
 disposable Git repositories. Git and Python 3 are the only prerequisites.
 
@@ -53,6 +53,37 @@ features; it does not isolate an agent running with the owner's credentials.
 
 The owner reported a successful local run of all four examples. A subsequent
 agent-run verification at bd5182a also passed all four tests on macOS.
-Repository identity and foreign-worktree counterprobes remain open before
-the Rust prototype. Linux execution and an independently assessed chat switch
-remain unverified.
+Repository identity and foreign-worktree reference examples have now passed
+locally. Linux execution and an independently assessed chat switch remain
+unverified.
+
+## Repository discovery examples and Linux check
+
+Four additional examples cover two real local clones with differently spelled
+GitHub remotes, a different repository, unsupported remote formats, an ordinary
+subdirectory, an independently initialized nested repository, and an ignored
+child inside a foreign working tree. All remote names are fixture data; the
+tests perform no network requests.
+
+The reference identity comparison supports HTTPS and scp-style GitHub URLs.
+Other hosts and formats are explicitly rejected. The future Rust resolver needs
+its own normal-entry-point tests for this scope. Root discovery compares Git's
+result with an independently supplied expected workspace root. A caller must
+not infer the expected root from the same unchecked discovery result.
+
+The foreign-child example first observes a successful empty Git file listing
+despite a real file being present, then requires rejection of the foreign root.
+The nested-repository example confirms the inner root is accepted for the inner
+workspace and rejected when the outer workspace was expected. These are mutation
+boundary examples. Diagnostic file-scan fallback remains a separate behavior.
+
+The workflow in .github/workflows/contracts.yml runs all eight examples on
+Ubuntu with Python 3.11. It grants read-only repository permission and disables
+persisted checkout credentials. The owner transfers the local commits, then
+checks the Acceptance contracts workflow on the updated PR. Workflow success
+provides Linux evidence for these examples. Enforcement as a required check and
+isolation from owner credentials require separate host configuration.
+
+Local preparation used the existing unittest harness and adds no dependencies.
+The independent chat-switch assessment remains open. The owner must keep its
+answer key outside the agent's accessible context.
