@@ -3,15 +3,18 @@
 Date: 2026-11-26
 Base: main at fd5d9da13ad4bbb273eba9475f70a2cf103a9e1c
 Work branch: codex/ssh-repository-identity
-Status: reproduction recorded; awaiting the owner's port decision.
+Status: owner decision recorded; subsequent implementation authorized; stopped
+before implementation for chat switch.
 
 ## Scope and authorization
 
-Source: the owner's request in the Codex chat on 26 November 2026.
-Authorized now: a local work branch, tests, this task note and local commits.
-Behavior changes require the owner's port decision first. The owner handles
-transfer to GitHub and merge. No new dependencies are allowed.
-This note records the request; it does not authenticate or extend approval.
+Source: the owner's original request and explicit option-2 follow-up decision
+in the Codex chat on 26 November 2026.
+The owner authorizes subsequent implementation within the decision below.
+Local changes, tests and commits remain allowed. For this turn, only this note
+may be changed and committed; then stop for chat switch before implementation.
+The owner still handles transfer to GitHub and merge. No new dependencies.
+This note records the owner's messages; it does not authenticate or extend approval.
 
 ## Work completed
 
@@ -28,14 +31,20 @@ Expected error at the first SSH call: `ValueError: unsupported GitHub remote`.
 The later assertions in the new test are not reached yet. No successful SSH
 behavior or Linux execution is claimed.
 
-## Open owner decision and stop boundary
+## Recorded owner decision and chat-switch boundary
 
-How should explicit SSH ports such as :22 and :2222 be handled?
-- Reject all explicit ports.
-- Treat :22 as the portless identity and reject other ports.
-- Allow other ports too; specify whether they are ignored or part of identity.
+The owner chose option 2 and explicitly approved subsequent implementation:
 
-No port policy has been selected or encoded in tests. Implementation is pending.
-Stop here after reporting the reproduction and asking the owner. A later decision
-must be recorded from the actual owner response; this note grants no permission
-to implement, push or merge.
+- Portless SSH URLs and SSH URLs with explicit :22 yield the same repository
+  identity, e.g. ssh://git@github.com/vfi64/apk2.git and
+  ssh://git@github.com:22/vfi64/apk2.git both map to github.com/vfi64/apk2.
+- All other explicit ports, including :2222, are rejected.
+- Existing HTTPS/scp cases must keep passing. Equivalent spellings share identity;
+  different repositories remain distinguishable. Existing tests are retained.
+
+Reproduction commit: 693c997a726133295db013d8435482c96406ec90.
+The reference function and tests have not been changed since that reproduction.
+The results above are from that run; tests are not rerun for this note-only update.
+Implementation and port-specific tests remain pending for the successor chat.
+Next: add tests for the approved port policy, implement the bounded extension,
+and run the existing unittest suite. Stop this turn after committing only this note.
