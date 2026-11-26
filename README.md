@@ -42,3 +42,17 @@ need separate acceptance coverage when those capabilities are introduced.
 This package follows the owner-approved four-contract slice from 26 November
 2026. It supplies requirements for the next prototype. Product benefit,
 time/token savings and an independently assessed chat switch remain unmeasured.
+
+## Confirmed local-first scope
+
+The owner confirmed in the Codex chat on 26 November 2026 that the first
+prototype prepares and checks changes locally. The owner transfers proposals
+to GitHub. An apk2-owned push, its operation journal and push recovery are
+deferred until a concrete need is demonstrated. This decision limits apk2's
+features; it does not isolate an agent running with the owner's credentials.
+
+The owner reported a successful local run of all four examples. A subsequent
+agent-run verification at bd5182a also passed all four tests on macOS.
+Repository identity and foreign-worktree counterprobes remain open before
+the Rust prototype. Linux execution and an independently assessed chat switch
+remain unverified.
