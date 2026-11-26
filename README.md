@@ -1,8 +1,50 @@
 # apk2 acceptance examples
 
-This repository contains eleven executable contract examples for the planned
-Rust implementation. Python's standard library runs the examples against local
-disposable Git repositories. Git and Python 3 are the only prerequisites.
+This repository contains the first Rust implementation of the local candidate
+gate and eleven Python reference examples. Both suites use disposable local Git
+repositories.
+
+## Local candidate gate
+
+Build with `cargo build --release --locked`. The binary needs Git on macOS or
+Linux. Run it from the intended worktree or a subdirectory. Supply the expected
+root and identity independently of Git discovery. For example:
+
+```sh
+apk2 gate --root /path/to/checkout --identity github.com/owner/repo \
+  --base FULL_COMMIT_ID --path src/main.rs --path tests/example.rs \
+  -- /absolute/path/to/checker
+```
+
+Each selection is a literal path relative to the workspace root. The gate reads
+the base into a temporary Git index, applies the selected working-tree changes,
+and builds a tree object. It copies regular Git blobs and their executable bits
+into a separate directory. The checker runs there with temporary `HOME` and
+`TMPDIR` and an inherited `PATH`. Use a trusted checker and repository. The
+temporary directory and environment are not an operating-system sandbox.
+
+Stdout contains one JSON object with `state`, `base`, and `tree`. The object IDs
+are present once a candidate has run through the checker. Early errors report
+null IDs. Diagnostics go to stderr, including checker stderr.
+
+| Exit code | State | Meaning |
+| --- | --- | --- |
+| 0 | PASS | Checker exited 0 on the candidate. |
+| 1 | REJECTED | Checker exited 1 on the candidate. |
+| 2 | ERROR | Candidate preparation failed or the checker failed to start, was interrupted, or exited with another code. |
+| 3 | BLOCKED | Arguments, expected workspace, identity, or base did not satisfy a precondition. |
+
+The gate writes Git objects and leaves refs, the real index, and the original
+checkout untouched during normal operation. Git trees containing symlinks or
+submodules are outside this first slice and produce an error. The gate has no
+commit or remote operation and does not authenticate owner approval.
+
+Run `cargo test --release --locked` to exercise the compiled CLI in fresh
+repositories. The CI matrix runs these tests on macOS and Linux.
+
+## Python reference examples
+
+Git and Python 3 are sufficient to run these examples.
 
 ```sh
 python3 -m unittest discover -s tests -v
@@ -69,7 +111,7 @@ The reference identity comparison supports HTTPS, scp-style, and
 `ssh://git@github.com/OWNER/REPO.git` URLs. Omitting the SSH port or specifying
 `:22` yields the same identity as the equivalent HTTPS and scp-style URLs.
 Other explicit SSH ports, other hosts, and unsupported formats are rejected.
-The future Rust resolver needs its own normal-entry-point tests for this scope.
+The Rust CLI tests cover these identity forms through the candidate gate.
 Root discovery compares Git's result with an independently supplied expected
 workspace root. A caller must not infer the expected root from the same unchecked
 discovery result.
