@@ -1,6 +1,6 @@
 # apk2 acceptance examples
 
-This repository contains eight executable contract examples for the planned
+This repository contains eleven executable contract examples for the planned
 Rust implementation. Python's standard library runs the examples against local
 disposable Git repositories. Git and Python 3 are the only prerequisites.
 
@@ -65,11 +65,14 @@ subdirectory, an independently initialized nested repository, and an ignored
 child inside a foreign working tree. All remote names are fixture data; the
 tests perform no network requests.
 
-The reference identity comparison supports HTTPS and scp-style GitHub URLs.
-Other hosts and formats are explicitly rejected. The future Rust resolver needs
-its own normal-entry-point tests for this scope. Root discovery compares Git's
-result with an independently supplied expected workspace root. A caller must
-not infer the expected root from the same unchecked discovery result.
+The reference identity comparison supports HTTPS, scp-style, and
+`ssh://git@github.com/OWNER/REPO.git` URLs. Omitting the SSH port or specifying
+`:22` yields the same identity as the equivalent HTTPS and scp-style URLs.
+Other explicit SSH ports, other hosts, and unsupported formats are rejected.
+The future Rust resolver needs its own normal-entry-point tests for this scope.
+Root discovery compares Git's result with an independently supplied expected
+workspace root. A caller must not infer the expected root from the same unchecked
+discovery result.
 
 The foreign-child example first observes a successful empty Git file listing
 despite a real file being present, then requires rejection of the foreign root.
@@ -77,7 +80,7 @@ The nested-repository example confirms the inner root is accepted for the inner
 workspace and rejected when the outer workspace was expected. These are mutation
 boundary examples. Diagnostic file-scan fallback remains a separate behavior.
 
-The workflow in .github/workflows/contracts.yml runs all eight examples on
+The workflow in .github/workflows/contracts.yml runs the full test suite on
 Ubuntu with Python 3.11. It grants read-only repository permission and disables
 persisted checkout credentials. The owner transfers the local commits, then
 checks the Acceptance contracts workflow on the updated PR. Workflow success
