@@ -42,6 +42,13 @@ commit or remote operation and does not authenticate owner approval.
 Run `cargo test --release --locked` to exercise the compiled CLI in fresh
 repositories. The CI matrix runs these tests on macOS and Linux.
 
+For a pilot installation, download the `apk2-OS-ARCH` artifact for your platform
+from a successful **Acceptance contracts** run. Extract the outer ZIP in a
+temporary directory, run `shasum -a 256 -c SHA256SUMS`, then extract
+`apk2.tar.gz`. `SOURCE_COMMIT` identifies the checkout used to build the
+binary. The workflow runs the extracted binary in a fresh Git repository on
+each platform before upload. These CI artifacts expire after seven days.
+
 ## Local commit proposal
 
 `apk2 propose` takes the gate arguments and requires three additional options:
