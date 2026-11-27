@@ -22,3 +22,22 @@ jobs:
           python-version: '3.11'
       - name: Run local Git contract examples
         run: python -B -m unittest discover -s tests -v
+
+  rust-gate:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      - name: Check Rust formatting and lints
+        run: |
+          cargo +stable fmt --check
+          cargo +stable clippy --locked --offline --all-targets -- -D warnings
+      - name: Test the built release CLI in fresh local Git repositories
+        run: cargo +stable test --release --locked --offline
