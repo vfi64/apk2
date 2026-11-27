@@ -1,8 +1,8 @@
 # apk2 acceptance examples
 
 This repository contains the first Rust implementation of the local candidate
-gate and eleven Python reference examples. Both suites use disposable local Git
-repositories.
+gate and proposal workflow, plus eleven Python reference examples. Both test
+suites use disposable local Git repositories.
 
 ## Local candidate gate
 
@@ -41,6 +41,33 @@ commit or remote operation and does not authenticate owner approval.
 
 Run `cargo test --release --locked` to exercise the compiled CLI in fresh
 repositories. The CI matrix runs these tests on macOS and Linux.
+
+## Local commit proposal
+
+`apk2 propose` takes the gate arguments and requires three additional options:
+
+- `--source-ref refs/heads/BRANCH` names the local branch expected to point
+  directly to the supplied `--base` commit.
+- `--proposal NAME` names the destination `refs/apk2/proposals/NAME`. Start
+  with an ASCII letter or digit, followed by letters, digits, dots, underscores
+  or hyphens. Git's ref-name rules also apply.
+- `--message TEXT` supplies the nonempty commit message. Configure Git author
+  and committer identity in the repository (for example, the local
+  `user.name` and `user.email` settings).
+
+The proposal runs a fresh gate and creates the commit from that tree with the
+supplied base as its only parent. Git checks the source ref and creates the
+proposal ref in a single transaction. The source branch, user index, and
+checkout stay in place. The commit is available for inspection through the
+proposal ref. The owner handles any transfer to GitHub.
+
+The result includes the gate fields and adds `commit` and `outcome`. A newly
+created proposal returns `PASS` with `DONE`. An existing proposal with the same
+tree, parent, and message (ignoring trailing newlines) returns `PASS` with
+`NOOP` after a fresh check. A moved source ref, a conflicting proposal, or a
+symbolic ref yields `BLOCKED`. When there is no successful proposal, `commit`
+and `outcome` are null. A failed ref transaction can leave an unreferenced Git
+object behind. A retry rechecks the tree and the state of both refs.
 
 ## Python reference examples
 
