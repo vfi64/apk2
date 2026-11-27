@@ -41,3 +41,38 @@ jobs:
           cargo +stable clippy --locked --offline --all-targets -- -D warnings
       - name: Test the built release CLI in fresh local Git repositories
         run: cargo +stable test --release --locked --offline
+      - name: Package and test the release binary
+        shell: bash
+        run: |
+          package=$(mktemp -d "$RUNNER_TEMP/apk2-package.XXXXXX")
+          trap 'rm -rf "$package"' EXIT
+          mkdir -p dist "$package/installed" "$package/repo"
+          install -m 755 target/release/apk2 "$package/apk2"
+          git rev-parse HEAD > "$package/SOURCE_COMMIT"
+          COPYFILE_DISABLE=1 tar -czf dist/apk2.tar.gz -C "$package" apk2 SOURCE_COMMIT
+          (cd dist && shasum -a 256 apk2.tar.gz > SHA256SUMS && shasum -a 256 -c SHA256SUMS)
+          tar -xzf dist/apk2.tar.gz -C "$package/installed"
+          test -x "$package/installed/apk2"
+          (
+            cd "$package/repo"
+            git init -q
+            git remote add origin https://github.com/example/pilot.git
+            printf 'baseline\n' > selected.txt
+            git add -- selected.txt
+            git -c user.name=Fixture -c user.email=fixture@example.invalid \
+              -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -qm baseline
+            printf 'candidate\n' > selected.txt
+            "$package/installed/apk2" gate --root "$PWD" \
+              --identity github.com/example/pilot --base "$(git rev-parse HEAD)" \
+              --path selected.txt -- /bin/sh -c 'test "$(cat selected.txt)" = candidate'
+          )
+      - name: Upload the tested binary package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apk2-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            dist/apk2.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
