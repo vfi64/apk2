@@ -15,7 +15,9 @@ impl Repo {
         let number = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!("apk2-tests-{}-{number}", std::process::id()));
         fs::create_dir(&root).unwrap();
-        git(&root, &["init", "-q"]);
+        git(&root, &["init", "-q", "-b", "source"]);
+        git(&root, &["config", "user.name", "apk2 fixture"]);
+        git(&root, &["config", "user.email", "fixture@example.invalid"]);
         git(
             &root,
             &[
@@ -55,6 +57,47 @@ impl Repo {
             .args(["--", "/bin/sh", "-c", checker])
             .output()
             .unwrap()
+    }
+
+    fn propose(&self, name: &str, message: &str, checker: &str) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_apk2"))
+            .current_dir(&self.root)
+            .args([
+                "propose",
+                "--root",
+                self.root.to_str().unwrap(),
+                "--identity",
+                "github.com/vfi64/apk2",
+                "--base",
+                &self.base,
+                "--source-ref",
+                "refs/heads/source",
+                "--proposal",
+                name,
+                "--message",
+                message,
+                "--path",
+                "selected",
+                "--",
+                "/bin/sh",
+                "-c",
+                checker,
+                "checker",
+                self.root.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap()
+    }
+
+    fn proposal_refs(&self) -> String {
+        git(
+            &self.root,
+            &[
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/apk2/proposals/",
+            ],
+        )
     }
 }
 
@@ -103,6 +146,17 @@ fn outcome(output: Output, code: i32, state: &str) -> String {
         "{report}"
     );
     report
+}
+
+fn report_string(report: &str, field: &str) -> String {
+    report
+        .split(&format!("\"{field}\":\""))
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_owned()
 }
 
 #[test]
@@ -243,4 +297,192 @@ fn refuses_a_tree_with_a_symlink_before_running_the_checker() {
         2,
         "ERROR",
     );
+}
+
+#[test]
+fn proposes_exact_checked_tree_and_preserves_source_checkout() {
+    let repo = Repo::new();
+    fs::write(repo.root.join("selected"), "checked candidate\n").unwrap();
+    fs::write(repo.root.join("unrelated"), "foreign staged\n").unwrap();
+    git(&repo.root, &["add", "--", "unrelated"]);
+    let index = fs::read(repo.root.join(".git/index")).unwrap();
+    let report = outcome(
+        repo.propose(
+            "trial",
+            "Propose change",
+            "grep -qx 'checked candidate' selected && grep -qx baseline unrelated",
+        ),
+        0,
+        "PASS",
+    );
+    assert_eq!(report_string(&report, "outcome"), "DONE");
+    let commit = report_string(&report, "commit");
+    assert_eq!(
+        git(&repo.root, &["rev-parse", "refs/apk2/proposals/trial"]),
+        commit
+    );
+    assert_eq!(
+        git(&repo.root, &["rev-parse", &format!("{commit}^{{tree}}")]),
+        report_string(&report, "tree")
+    );
+    assert_eq!(
+        git(&repo.root, &["show", "-s", "--format=%P", &commit]),
+        repo.base
+    );
+    assert_eq!(
+        git(&repo.root, &["show", &format!("{commit}:selected")]),
+        "checked candidate"
+    );
+    assert_eq!(
+        git(&repo.root, &["show", &format!("{commit}:unrelated")]),
+        "baseline"
+    );
+    assert_eq!(git(&repo.root, &["rev-parse", "HEAD"]), repo.base);
+    assert_eq!(fs::read(repo.root.join(".git/index")).unwrap(), index);
+    assert_eq!(
+        fs::read_to_string(repo.root.join("selected")).unwrap(),
+        "checked candidate\n"
+    );
+    assert_eq!(
+        fs::read_to_string(repo.root.join("unrelated")).unwrap(),
+        "foreign staged\n"
+    );
+}
+
+#[test]
+fn rechecks_identical_proposal_and_blocks_different_messages_or_trees() {
+    let repo = Repo::new();
+    fs::write(repo.root.join("selected"), "first\n").unwrap();
+    let initial = outcome(
+        repo.propose("trial", "Begin\n\nDetails", "exit 0"),
+        0,
+        "PASS",
+    );
+    let commit = report_string(&initial, "commit");
+    outcome(
+        repo.propose("trial", "Begin\n\nDetails", "exit 1"),
+        1,
+        "REJECTED",
+    );
+    let again = outcome(
+        repo.propose("trial", "Begin\n\nDetails", "exit 0"),
+        0,
+        "PASS",
+    );
+    assert_eq!(report_string(&again, "outcome"), "NOOP");
+    assert_eq!(report_string(&again, "commit"), commit);
+    outcome(
+        repo.propose("trial", "Different message", "exit 0"),
+        3,
+        "BLOCKED",
+    );
+    fs::write(repo.root.join("selected"), "second\n").unwrap();
+    outcome(
+        repo.propose("trial", "Begin\n\nDetails", "exit 0"),
+        3,
+        "BLOCKED",
+    );
+    assert_eq!(
+        git(&repo.root, &["rev-parse", "refs/apk2/proposals/trial"]),
+        commit
+    );
+}
+
+#[test]
+fn failed_or_crashed_checker_creates_no_proposal() {
+    let repo = Repo::new();
+    outcome(repo.propose("reject", "Change", "exit 1"), 1, "REJECTED");
+    outcome(repo.propose("error", "Change", "exit 2"), 2, "ERROR");
+    assert!(repo.proposal_refs().is_empty());
+}
+
+#[test]
+fn refuses_to_publish_after_source_ref_moves_during_check() {
+    let repo = Repo::new();
+    let tree = git(&repo.root, &["rev-parse", "HEAD^{tree}"]);
+    let advance = git(
+        &repo.root,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &repo.base,
+            "-m",
+            "Concurrent advance",
+        ],
+    );
+    let checker = format!(
+        "git -C \"$1\" update-ref refs/heads/source {advance} {}",
+        repo.base
+    );
+    outcome(
+        repo.propose("stale", "Should not publish", &checker),
+        3,
+        "BLOCKED",
+    );
+    assert_eq!(
+        git(&repo.root, &["rev-parse", "refs/heads/source"]),
+        advance
+    );
+    assert!(repo.proposal_refs().is_empty());
+}
+
+#[test]
+fn refuses_invalid_names_and_symbolic_proposal_refs() {
+    let repo = Repo::new();
+    outcome(repo.propose("../escaped", "Change", "exit 2"), 3, "BLOCKED");
+    assert!(repo.proposal_refs().is_empty());
+    git(
+        &repo.root,
+        &[
+            "symbolic-ref",
+            "refs/apk2/proposals/trial",
+            "refs/heads/source",
+        ],
+    );
+    outcome(repo.propose("trial", "Change", "exit 0"), 3, "BLOCKED");
+    assert_eq!(
+        git(&repo.root, &["symbolic-ref", "refs/apk2/proposals/trial"]),
+        "refs/heads/source"
+    );
+    assert_eq!(git(&repo.root, &["rev-parse", "HEAD"]), repo.base);
+}
+
+#[test]
+fn commits_the_checked_tree_even_if_file_changes_during_the_check() {
+    let repo = Repo::new();
+    fs::write(repo.root.join("selected"), "candidate\n").unwrap();
+    let report = outcome(
+        repo.propose(
+            "trial",
+            "Keep the checked snapshot",
+            "grep -qx candidate selected && printf 'later edit\\n' > \"$1/selected\"",
+        ),
+        0,
+        "PASS",
+    );
+    let commit = report_string(&report, "commit");
+    assert_eq!(
+        git(&repo.root, &["show", &format!("{commit}:selected")]),
+        "candidate"
+    );
+    assert_eq!(
+        fs::read_to_string(repo.root.join("selected")).unwrap(),
+        "later edit\n"
+    );
+}
+
+#[test]
+fn similar_tag_names_do_not_shadow_proposal_refs() {
+    let repo = Repo::new();
+    git(
+        &repo.root,
+        &[
+            "update-ref",
+            "refs/tags/refs/apk2/proposals/trial",
+            &repo.base,
+        ],
+    );
+    outcome(repo.propose("trial", "Change", "exit 0"), 0, "PASS");
+    assert_eq!(repo.proposal_refs(), "refs/apk2/proposals/trial");
 }

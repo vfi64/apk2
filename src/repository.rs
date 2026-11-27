@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
 
 pub struct Git<'a> {
     directory: &'a Path,
@@ -32,7 +32,10 @@ impl<'a> Git<'a> {
     }
 
     fn output(&self, command: &mut Command, action: &str) -> io::Result<Vec<u8>> {
-        let output = command.output()?;
+        Self::checked_output(command.output()?, action)
+    }
+
+    fn checked_output(output: Output, action: &str) -> io::Result<Vec<u8>> {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(io::Error::other(format!("git {action}: {}", stderr.trim())));
@@ -65,6 +68,105 @@ impl<'a> Git<'a> {
             "rev-parse",
         )?;
         object_id(&output)
+    }
+
+    pub fn validate_ref(&self, name: &str) -> io::Result<()> {
+        self.output(
+            self.command().args(["check-ref-format", name]),
+            "check-ref-format",
+        )?;
+        Ok(())
+    }
+
+    pub fn is_symbolic_ref(&self, name: &str) -> io::Result<bool> {
+        let output = self.command().args(["symbolic-ref", "-q", name]).output()?;
+        if output.status.code() == Some(1) {
+            return Ok(false);
+        }
+        Self::checked_output(output, "symbolic-ref").map(|_| true)
+    }
+
+    pub fn read_ref(&self, name: &str) -> io::Result<Option<String>> {
+        let output = self.output(
+            self.command()
+                .args(["for-each-ref", "--format=%(refname)%00%(objectname)", name]),
+            "for-each-ref",
+        )?;
+        // Revision parsing can fall back to a tag with a similar name.
+        for line in output.split(|byte| *byte == b'\n') {
+            if let Some(id) = line
+                .strip_prefix(name.as_bytes())
+                .and_then(|rest| rest.strip_prefix(b"\0"))
+            {
+                return object_id(id).map(Some);
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn create_commit(&self, tree: &str, parent: &str, message: &str) -> io::Result<String> {
+        let output = self.output(
+            self.command()
+                .args(["commit-tree", tree, "-p", parent, "-m", message]),
+            "commit-tree",
+        )?;
+        object_id(&output)
+    }
+
+    pub fn matches_commit(
+        &self,
+        commit: &str,
+        tree: &str,
+        parent: &str,
+        message: &str,
+    ) -> io::Result<bool> {
+        let output = self.output(self.command().args(["cat-file", "-t", commit]), "cat-file")?;
+        if output != b"commit\n" {
+            return Ok(false);
+        }
+        let raw = self.output(
+            self.command().args(["cat-file", "commit", commit]),
+            "cat-file",
+        )?;
+        let Some(separator) = raw.windows(2).position(|bytes| bytes == b"\n\n") else {
+            return Err(io::Error::other("missing Git commit header"));
+        };
+        let mut headers = raw[..separator].split(|byte| *byte == b'\n');
+        let matches_tree =
+            headers.next().and_then(|line| line.strip_prefix(b"tree ")) == Some(tree.as_bytes());
+        let mut parents = headers.filter_map(|line| line.strip_prefix(b"parent "));
+        let matches_parent = parents.next() == Some(parent.as_bytes()) && parents.next().is_none();
+        let same_message = std::str::from_utf8(&raw[separator + 2..])
+            .is_ok_and(|actual| actual.trim_end_matches('\n') == message.trim_end_matches('\n'));
+        Ok(matches_tree && matches_parent && same_message)
+    }
+
+    pub fn publish_proposal(
+        &self,
+        source: &str,
+        base: &str,
+        target: &str,
+        commit: &str,
+        existing: bool,
+    ) -> io::Result<()> {
+        let operation = if existing { "verify" } else { "create" };
+        let input = format!(
+            "start\noption no-deref\nverify {source} {base}\noption no-deref\n{operation} {target} {commit}\nprepare\ncommit\n"
+        );
+        let mut child = self
+            .command()
+            .args(["update-ref", "--stdin"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let written = child
+            .stdin
+            .take()
+            .expect("piped stdin")
+            .write_all(input.as_bytes());
+        Self::checked_output(child.wait_with_output()?, "update-ref")?;
+        written
     }
 
     pub fn candidate(&self, base: &str, paths: &[PathBuf], index: &Path) -> io::Result<String> {

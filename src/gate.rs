@@ -15,6 +15,11 @@ pub struct Request {
     pub checker_args: Vec<OsString>,
 }
 
+pub struct Workspace {
+    root: PathBuf,
+    pub base: String,
+}
+
 pub enum State {
     Pass,
     Rejected,
@@ -52,6 +57,16 @@ impl From<io::Error> for Failure {
 }
 
 pub fn run(request: Request) -> Result<Report, Failure> {
+    check(&resolve(&request)?, &request)
+}
+
+impl Workspace {
+    pub fn git(&self) -> Git<'_> {
+        Git::new(&self.root)
+    }
+}
+
+pub fn resolve(request: &Request) -> Result<Workspace, Failure> {
     let root = request
         .root
         .canonicalize()
@@ -95,9 +110,14 @@ pub fn run(request: Request) -> Result<Report, Failure> {
         ));
     }
 
-    let scratch = Scratch::new(&root)?;
+    Ok(Workspace { root, base })
+}
+
+pub fn check(workspace: &Workspace, request: &Request) -> Result<Report, Failure> {
+    let git = workspace.git();
+    let scratch = Scratch::new(&workspace.root)?;
     let index = scratch.path().join("index");
-    let tree = git.candidate(&base, &request.paths, &index)?;
+    let tree = git.candidate(&workspace.base, &request.paths, &index)?;
     let checkout = scratch.path().join("checkout");
     let environment = scratch.path().join("environment");
     std::fs::create_dir(&checkout)?;
@@ -135,7 +155,7 @@ pub fn run(request: Request) -> Result<Report, Failure> {
     };
     Ok(Report {
         state,
-        base: Some(base),
+        base: Some(workspace.base.clone()),
         tree: Some(tree),
     })
 }
